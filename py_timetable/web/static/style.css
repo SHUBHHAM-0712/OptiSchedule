@@ -176,3 +176,41 @@ pre.raw {
   color: var(--muted);
   margin-top: 0.25rem;
 }
+
+.running-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 13px;
+  line-height: 1.4;
+  background: #e8f4fc;
+  border: 1px solid #7eb8e0;
+  border-radius: 4px;
+  color: #0a3d5c;
+}
+
+.running-banner .running-hint {
+  flex: 1 1 100%;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #7eb8e0;
+  border-top-color: #0a3d5c;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

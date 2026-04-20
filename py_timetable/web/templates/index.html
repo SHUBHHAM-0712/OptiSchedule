@@ -47,9 +47,14 @@
       <label>Source note</label>
       <input type="text" name="source" value="db" />
       <label>Timeout (seconds)</label>
-      <input type="number" name="timeout" value="180" min="30" max="600" />
-      <div><button type="submit" class="primary">Run scheduler</button></div>
+      <input type="number" name="timeout" id="schedule-timeout" value="180" min="30" max="600" />
+      <div><button type="submit" class="primary" id="btn-schedule">Run scheduler</button></div>
     </form>
+    <div id="schedule-banner" class="running-banner" hidden role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <span><strong>Scheduler running on the server</strong> — <span id="schedule-elapsed">0</span>s elapsed</span>
+      <span class="running-hint" id="schedule-hint"></span>
+    </div>
     <pre id="schedule-out" class="raw" hidden></pre>
   </section>
 
@@ -133,18 +138,61 @@
 
     $("#form-schedule").onsubmit = async (ev) => {
       ev.preventDefault();
-      const fd = new FormData(ev.target);
+      const form = ev.target;
+      const fd = new FormData(form);
       const out = $("#schedule-out");
+      const banner = $("#schedule-banner");
+      const elapsedEl = $("#schedule-elapsed");
+      const hintEl = $("#schedule-hint");
+      const btn = $("#btn-schedule");
+      const timeoutSec = Math.max(30, parseInt(String(fd.get("timeout") || "180"), 10) || 180);
+
       out.hidden = false;
-      out.textContent = "Running…";
+      out.textContent = "Waiting for server…";
+      banner.hidden = false;
+      hintEl.textContent = ` (may run up to ${timeoutSec}s — CSP is CPU-heavy; page stays open until it finishes)`;
+      btn.disabled = true;
+      form.querySelectorAll("input, select, button").forEach((el) => {
+        if (el !== btn) el.disabled = true;
+      });
+
+      const t0 = Date.now();
+      elapsedEl.textContent = "0";
+      const tick = setInterval(() => {
+        elapsedEl.textContent = String(Math.floor((Date.now() - t0) / 1000));
+      }, 500);
+      banner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
       try {
         const r = await fetch("/api/schedule", { method: "POST", body: fd });
-        const j = await r.json();
-        out.textContent = JSON.stringify(j, null, 2);
-        refreshRuns();
-        refreshMeta();
+        const text = await r.text();
+        let j;
+        try {
+          j = JSON.parse(text);
+        } catch (_) {
+          j = { ok: false, parse_error: true, status: r.status, body: text.slice(0, 500) };
+        }
+        if (!r.ok) {
+          out.textContent =
+            typeof j.detail === "string"
+              ? `HTTP ${r.status}: ${j.detail}`
+              : `HTTP ${r.status}\n${JSON.stringify(j, null, 2)}`;
+        } else {
+          out.textContent = JSON.stringify(j, null, 2);
+          refreshRuns();
+          refreshMeta();
+        }
       } catch (e) {
-        out.textContent = String(e);
+        out.textContent =
+          String(e) +
+          "\n\n(Network error or browser closed the connection. The server may still be working — check Runs or try a smaller term / higher timeout.)";
+      } finally {
+        clearInterval(tick);
+        banner.hidden = true;
+        btn.disabled = false;
+        form.querySelectorAll("input, select, button").forEach((el) => {
+          el.disabled = false;
+        });
       }
     };
 
