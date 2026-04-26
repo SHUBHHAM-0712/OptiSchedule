@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+import psycopg2
 from psycopg2.extensions import connection as PgConnection
 from psycopg2.extras import execute_values
 
@@ -317,6 +318,8 @@ def run_scheduler(conn: PgConnection, label: str, source_csv: str, timeout_secon
         rows_to_insert,
     )
 
+    _mirror_run_to_legacy_tables(conn, run_id)
+
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE schedule_run SET status='completed', notes=%s WHERE run_id=%s",
@@ -331,3 +334,76 @@ def run_scheduler(conn: PgConnection, label: str, source_csv: str, timeout_secon
     if overflow_added:
         msg += f" (auto-added {overflow_added} overflow slots)"
     return run_id, True, msg
+
+
+def _mirror_run_to_legacy_tables(conn: PgConnection, run_id: int) -> None:
+    """Best-effort compatibility mirror for deployments that still read legacy tables."""
+    with conn.cursor() as cur:
+        cur.execute("SAVEPOINT tt_legacy_mirror")
+        try:
+            cur.execute(
+                """
+                INSERT INTO timetable_session (
+                    run_id,
+                    assignment_id,
+                    room_id,
+                    slot_id,
+                    lecture_index,
+                    course_id,
+                    faculty_id,
+                    course_code,
+                    course_title,
+                    total_students,
+                    batch_count,
+                    merged,
+                    group_signature,
+                    faculty_label
+                )
+                SELECT
+                    mt.run_id,
+                    mt.assignment_id,
+                    mt.room_id,
+                    mt.slot_id,
+                    mt.lecture_index,
+                    c.course_id,
+                    f.faculty_id,
+                    c.code,
+                    c.title,
+                    sb.batch_size,
+                    1,
+                    FALSE,
+                    CONCAT(mt.run_id, ':', mt.assignment_id, ':', mt.slot_id, ':', mt.lecture_index),
+                    f.short_name
+                FROM master_timetable mt
+                JOIN faculty_course_map fcm ON fcm.assignment_id = mt.assignment_id
+                JOIN course c ON c.course_id = fcm.course_id
+                JOIN faculty f ON f.faculty_id = fcm.faculty_id
+                JOIN student_batch sb ON sb.batch_id = mt.batch_id
+                WHERE mt.run_id = %s
+                ON CONFLICT (run_id, assignment_id, slot_id) DO NOTHING
+                """,
+                (run_id,),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO timetable_session_batch (session_id, batch_id)
+                SELECT ts.session_id, mt.batch_id
+                FROM master_timetable mt
+                JOIN timetable_session ts
+                  ON ts.run_id = mt.run_id
+                 AND ts.assignment_id = mt.assignment_id
+                 AND ts.room_id = mt.room_id
+                 AND ts.slot_id = mt.slot_id
+                 AND ts.lecture_index = mt.lecture_index
+                WHERE mt.run_id = %s
+                ON CONFLICT (session_id, batch_id) DO NOTHING
+                """,
+                (run_id,),
+            )
+            cur.execute("RELEASE SAVEPOINT tt_legacy_mirror")
+        except psycopg2.Error:
+            # Optional compatibility path: preserve successful scheduling even if
+            # legacy tables are absent or use a different schema.
+            cur.execute("ROLLBACK TO SAVEPOINT tt_legacy_mirror")
+            cur.execute("RELEASE SAVEPOINT tt_legacy_mirror")

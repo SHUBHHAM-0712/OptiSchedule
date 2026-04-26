@@ -129,14 +129,8 @@ def ingest_academic_csv(conn: PgConnection, path: Path, default_batch_size: int)
                 )
 
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM master_timetable")
-        cur.execute("DELETE FROM conflict_report")
-        cur.execute("DELETE FROM schedule_run")
+        # Keep schedule history intact; only refresh current offering mappings.
         cur.execute("DELETE FROM batch_course_map")
-        cur.execute("DELETE FROM faculty_course_map")
-        cur.execute("DELETE FROM student_batch")
-        cur.execute("DELETE FROM course")
-        cur.execute("DELETE FROM faculty")
 
     faculty_ids: dict[str, int] = {}
     course_ids: dict[str, int] = {}
@@ -169,13 +163,22 @@ def ingest_academic_csv(conn: PgConnection, path: Path, default_batch_size: int)
             """
             INSERT INTO course (code, title, lecture_hours, tutorial_hours, practical_hours, credits, course_type, elective_slot)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (code) DO UPDATE
+            SET title = EXCLUDED.title,
+                lecture_hours = EXCLUDED.lecture_hours,
+                tutorial_hours = EXCLUDED.tutorial_hours,
+                practical_hours = EXCLUDED.practical_hours,
+                credits = EXCLUDED.credits,
+                course_type = EXCLUDED.course_type,
+                elective_slot = EXCLUDED.elective_slot
             RETURNING course_id
             """,
             (code, title, lh, th, ph, cr, ctype.strip(), eslot),
         )
         cid = cur.fetchone()[0]
+        if code not in course_ids:
+            stats["courses"] += 1
         course_ids[code] = cid
-        stats["courses"] += 1
         return cid
 
     def ensure_batch(cur, program: str, semester: int) -> int:
@@ -186,6 +189,10 @@ def ingest_academic_csv(conn: PgConnection, path: Path, default_batch_size: int)
             """
             INSERT INTO student_batch (batch_code, program, semester, batch_size)
             VALUES (%s, %s, %s, %s)
+            ON CONFLICT (batch_code) DO UPDATE
+            SET program = EXCLUDED.program,
+                semester = EXCLUDED.semester,
+                batch_size = EXCLUDED.batch_size
             RETURNING batch_id
             """,
             (bcode, program.strip(), semester, default_batch_size),
