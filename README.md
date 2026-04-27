@@ -1,4 +1,4 @@
-# 📚 Time Table Generator – Intelligent Academic Scheduling Platform
+# 📚 OptiSchedule - Intelligent Time Table Generator & Academic Scheduling Platform
 
 > **Enable seamless timetable generation for academic institutions with support for multiple semesters, secure data management, and standardized APIs.**
 
