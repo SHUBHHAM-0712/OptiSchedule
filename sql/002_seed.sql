@@ -42,7 +42,8 @@ VALUES
     ('Fri', '11:00', '12:00', 'TEACHING', FALSE),
     ('Fri', '12:00', '13:00', 'TEACHING', FALSE),
     ('Fri', '13:00', '14:00', 'BLACKOUT', TRUE),
-    ('Fri', '14:00', '15:00', 'TEACHING', FALSE);
+    ('Fri', '14:00', '15:00', 'TEACHING', FALSE)
+ON CONFLICT (day_of_week, start_time) DO NOTHING;
 
 -- Academic catalog (faculty, courses, batches, maps)
 -- Faculty

@@ -42,7 +42,8 @@ CREATE TABLE time_matrix (
     start_time       TIME NOT NULL,
     end_time         TIME NOT NULL,
     slot_group       TEXT,
-    is_blackout      BOOLEAN
+    is_blackout      BOOLEAN,
+    CONSTRAINT uq_time_matrix_day_start UNIQUE (day_of_week, start_time)
 );
 
 CREATE TABLE faculty_course_map (
@@ -100,7 +101,8 @@ CREATE TABLE timetable_session (
     total_students   INT,
     batch_count      INT,
     merged           BOOLEAN,
-    created_at       TIMESTAMPTZ
+    created_at       TIMESTAMPTZ,
+    CONSTRAINT uq_timetable_session_run_assignment_slot UNIQUE (run_id, assignment_id, slot_id)
 );
 
 CREATE TABLE timetable_session_batch (
